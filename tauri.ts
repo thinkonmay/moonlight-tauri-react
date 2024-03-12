@@ -121,3 +121,7 @@ async function LeaveZeroTier(network_id: string) : Promise<string> {
     const command = await new Command('ZeroTier', ['join',network_id]).execute();
     return command.stdout + '\n' + command.stderr
 }
+async function DiscordRichPresence(app_id: string) : Promise<string> {
+    const command = await new Command('Daemon', ['discord',app_id]).execute();
+    return command.stdout + '\n' + command.stderr
+}

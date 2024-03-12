@@ -26,6 +26,11 @@
             "args": true
           },
           {
+            "name": "Daemon",
+            "cmd": "./daemon.exe",
+            "args": true
+          },
+          {
             "name": "ZeroTier",
             "cmd": "zerotier-cli",
             "args": true
