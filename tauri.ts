@@ -1,6 +1,13 @@
 import { Body, ResponseType, getClient } from '@tauri-apps/api/http';
 import { Child, Command } from "@tauri-apps/api/shell";
 
+// TODO /log & /info
+// TODO log moonlight
+// TODO api call status
+// TODO loading
+
+
+
 export const WS_PORT = 60000
 
 const map = new Map<string, {
@@ -118,15 +125,17 @@ export async function StartMoonlight(computer: Computer): Promise<string> {
         password: getRandomInt(0, 9999).toString()
     }
 
+    const display = {
+        ScreenWidth: 1920,
+        ScreenHeight: 1080,
+    }
+
     const id = getRandomInt(0, 100)
     const req = {
         id,
         timestamp: new Date().toISOString(),
         sunshine,
-        display: {
-            ScreenWidth: 1920,
-            ScreenHeight: 1080,
-        }
+        display 
     }
 
     const resp = await client.post(`http://${address}:${WS_PORT}/new`, Body.json(req), {
