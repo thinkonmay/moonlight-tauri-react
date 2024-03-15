@@ -116,7 +116,7 @@ export async function StartThinkmay(computer: Computer): Promise<string> {
 
 
 
-export async function StartMoonlight(computer: Computer): Promise<string> {
+export async function StartMoonlight(computer: Computer, callback?: (type: "stdout" | "stderr", log: string) => void ): Promise<string> {
     const { address } = computer
     const client = await getClient();
 
@@ -162,8 +162,8 @@ export async function StartMoonlight(computer: Computer): Promise<string> {
     console.log(`starting moonlight with ${cmds}`)
     const command = new Command('Moonlight', cmds);
 
-    command.stderr.addListener('data', (data) => console.log(data));
-    command.stdout.addListener('data', (data) => console.log(data));
+    command.stderr.addListener('data', (data) => callback != undefined ? callback('stderr',data) : console.log(data));
+    command.stdout.addListener('data', (data) => callback != undefined ? callback('stdout',data) : console.log(data));
     const child = await command.spawn()
 
     const ret = crypto.randomUUID()
