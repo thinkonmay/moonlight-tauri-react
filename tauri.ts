@@ -39,6 +39,12 @@ type StartRequest = {
     id: number,
 }
 
+type StreamConfig = {
+    bitrate?: number
+    width?: number
+    height?: number
+}
+
 type Computer = {
     address: string,
 
@@ -116,10 +122,11 @@ export async function StartThinkmay(computer: Computer): Promise<string> {
 
 
 
-export async function StartMoonlight(computer: Computer, callback?: (type: "stdout" | "stderr", log: string) => void ): Promise<string> {
+export async function StartMoonlight(computer: Computer, options? : StreamConfig, callback?: (type: "stdout" | "stderr", log: string) => void ): Promise<string> {
     const { address } = computer
     const client = await getClient();
 
+    const PORT = 65000
     const sunshine = {
         username: getRandomInt(0, 9999).toString(),
         password: getRandomInt(0, 9999).toString()
@@ -152,8 +159,16 @@ export async function StartMoonlight(computer: Computer, callback?: (type: "stdo
 
     const { username, password } = sunshine
     const cmds = [
-        '--url',
+        '--address',
         address,
+        '--port',
+        `${PORT}`,
+        '--width',
+        `${options?.width ?? 1920}`,
+        '--height',
+        `${options?.height ?? 1080}`,
+        '--height',
+        `${options?.bitrate ?? 6000}`,
         '--username',
         username,
         '--password',
