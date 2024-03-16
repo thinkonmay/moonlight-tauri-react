@@ -24,6 +24,7 @@ type StartRequest = {
     sunshine?: {
         username: string,
         password: string,
+        port: string
     }
     thinkmay?: {
         webrtcConfig: string
@@ -126,11 +127,11 @@ export async function StartMoonlight(computer: Computer, options? : StreamConfig
     const { address } = computer
     const client = await getClient();
 
-    const PORT = 65000
+    const PORT = getRandomInt(60000,65530)
     const sunshine = {
         username: getRandomInt(0, 9999).toString(),
         password: getRandomInt(0, 9999).toString(),
-        port: PORT
+        port: PORT.toString()
     }
 
     const display = {
@@ -168,7 +169,7 @@ export async function StartMoonlight(computer: Computer, options? : StreamConfig
         `${options?.width ?? 1920}`,
         '--height',
         `${options?.height ?? 1080}`,
-        '--height',
+        '--bitrate',
         `${options?.bitrate ?? 6000}`,
         '--username',
         username,
