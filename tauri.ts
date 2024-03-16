@@ -129,7 +129,8 @@ export async function StartMoonlight(computer: Computer, options? : StreamConfig
     const PORT = 65000
     const sunshine = {
         username: getRandomInt(0, 9999).toString(),
-        password: getRandomInt(0, 9999).toString()
+        password: getRandomInt(0, 9999).toString(),
+        port: PORT
     }
 
     const display = {
