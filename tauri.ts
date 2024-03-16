@@ -15,8 +15,8 @@ const map = new Map<string, {
     req: StartRequest
 }>()
 
-export function GetRequest(uuid: string): StartRequest {
-    return map.get(uuid).req
+export function GetRequest(uuid: string): undefined | StartRequest {
+    return map.get(uuid)?.req
 }
 
 
