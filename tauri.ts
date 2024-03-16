@@ -15,6 +15,28 @@ const map = new Map<string, {
     req: StartRequest
 }>()
 
+const LoggingQueue = [] as {type: string, message: string}[]
+
+
+export function Logging(event: {type: string, message: string}){
+    console.log(event)
+    LoggingQueue.push(event)
+} 
+
+export function GetLoggingMoonlight(): {type: string, message: string}[]{
+    // return all value in Logging and clear it
+    const ret = LoggingQueue.slice()
+    LoggingQueue.length = 0
+    return ret
+}
+
+export async function GetServerLog(address: string): Promise<{log: string, level: string, source: string, timestamp: string}[]>{ 
+    const client = await getClient();
+    const resp = (await client.get(`http://${address}:${WS_PORT}/log`)).data as {log: string, level: string, source: string, timestamp: string}[]
+
+    return resp;
+}
+
 export function GetRequest(uuid: string): undefined | StartRequest {
     return map.get(uuid)?.req
 }
@@ -147,16 +169,21 @@ export async function StartMoonlight(computer: Computer, options? : StreamConfig
         display 
     }
 
+    Logging({type: 'info', message: `Starting moonlight with ${JSON.stringify(req)}`});
+    Logging({type: 'info', message: `POST http://${computer}:${WS_PORT}/new Body ${JSON.stringify(req)}`})
     const resp = await client.post(`http://${address}:${WS_PORT}/new`, Body.json(req), {
         responseType: ResponseType.Text
     });
 
 
 
-    if (!resp.ok)
+    if (!resp.ok){
+        Logging({type: 'info', message: 'Error /new request return ' + resp.data});
         throw new Error(resp.data as string)
-    else
-        console.log('/new request return ' + resp.data)
+    }
+    else{
+        Logging({type: 'info', message: 'Response /new request return ' + resp.data});
+    }
 
 
     const { username, password } = sunshine
@@ -176,7 +203,7 @@ export async function StartMoonlight(computer: Computer, options? : StreamConfig
         '--password',
         password
     ]
-    console.log(`starting moonlight with ${cmds}`)
+    Logging({type: 'info', message: `starting moonlight with ${cmds}`});
     const command = new Command('Moonlight', cmds);
 
     command.stderr.addListener('data', (data) => callback != undefined ? callback('stderr',data) : console.log(data));
@@ -198,8 +225,10 @@ export async function CloseSession(uuid: string): Promise<Error | 'SUCCESS'> {
         return new Error('invalid uuid')
 
     await child.child?.kill()
+    
+    Logging({type: 'info', message: `killing child ${child.req.id}`});
 
-    console.log('/close request ' + child.req.id)
+    Logging({type: 'info', message: `POST http://${child.req.computer.address}:${WS_PORT}/closed Body ${child.req.id}`});
     await client.post(`http://${child.req.computer.address}:${WS_PORT}/closed`, Body.json({
         id: child.req.id
     }), { responseType: ResponseType.Text });
@@ -215,28 +244,36 @@ export async function ConfigureDaemon(address: string, reset: boolean): Promise<
         address
     }
 
-    console.log(`configuring daemon`)
+    Logging({type: 'info', message: `POST http://${address}:${WS_PORT}/initialize Body ${JSON.stringify(computer)}`})
     const client = await getClient();
     try {
         await client.post(`http://${address}:${WS_PORT}/initialize`, Body.json(computer), {
             responseType: ResponseType.JSON
         });
-    } catch { }
+    } catch { 
+        Logging({type: 'info', message: `error sending /initialize request to ${JSON.stringify(computer)}`})
+    }
 
+    Logging({type: 'info', message: `GET http://${address}:${WS_PORT}/sessions`})
     const sessions = (await client.get(`http://${address}:${WS_PORT}/sessions`)).data as {
         id: any
     }[];
 
+    if(sessions.length == 0){
+        Logging({type: 'info', message: `no running sessions on ${address}`})
+    }
+
     if (!reset)
         return computer
 
-    console.log(`running sessions : ${sessions.map(x => x.id)}`)
+    Logging({type: 'info', message: `running sessions : ${sessions.map(x => x.id)}`})
     for (let index = 0; index < sessions.length; index++) {
         const element = sessions[index];
-        console.log('/close request ' + element.id)
+        Logging({type: 'info', message: `POST http://${address}:${WS_PORT}/closed Body ${JSON.stringify(element)}`})
         await client.post(`http://${address}:${WS_PORT}/closed`, Body.json(element), { responseType: ResponseType.Text });
     }
 
+    Logging({type: 'info', message: `return ${JSON.stringify(computer)}`})
     return computer
 }
 
