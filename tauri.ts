@@ -1,4 +1,4 @@
-import { Body, ResponseType, getClient } from '@tauri-apps/api/http';
+import { Body, Client, ResponseType, getClient } from '@tauri-apps/api/http';
 import { Child, Command } from "@tauri-apps/api/shell";
 
 // TODO /log & /info
@@ -8,6 +8,8 @@ import { Child, Command } from "@tauri-apps/api/shell";
 
 
 
+let client : Client = null;
+getClient().then(x => client = x);
 export const WS_PORT = 60000
 
 const map = new Map<string, {
@@ -28,14 +30,13 @@ type StartRequest = {
     }
     thinkmay?: {
         webrtcConfig: string
-        authConfig: string
     }
     display?: {
         ScreenWidth: number,
         ScreenHeight: number,
     }
 
-    timestamp: string
+    target?: any
     computer: Computer
     id: number,
 }
@@ -60,8 +61,7 @@ type Computer = {
     rtc_config?: RTCConfiguration
 }
 
-export async function StartThinkmay(computer: Computer): Promise<string> {
-    const client = await getClient();
+export async function StartThinkmay(computer: Computer, target: any): Promise<string> {
     const { address } = computer
 
     const turn = {
@@ -85,7 +85,6 @@ export async function StartThinkmay(computer: Computer): Promise<string> {
     }
 
     const thinkmay = {
-        authConfig: '',
         webrtcConfig: JSON.stringify(webrtc_config)
     }
 
@@ -97,7 +96,7 @@ export async function StartThinkmay(computer: Computer): Promise<string> {
     const id = getRandomInt(0, 100)
     const req = {
         id,
-        timestamp: new Date().toISOString(),
+        target,
         thinkmay,
         turn,
         display
@@ -125,7 +124,6 @@ export async function StartThinkmay(computer: Computer): Promise<string> {
 
 export async function StartMoonlight(computer: Computer, options? : StreamConfig, callback?: (type: "stdout" | "stderr", log: string) => void ): Promise<string> {
     const { address } = computer
-    const client = await getClient();
 
     const PORT = getRandomInt(60000,65530)
     const sunshine = {
@@ -192,7 +190,6 @@ export async function StartMoonlight(computer: Computer, options? : StreamConfig
 
 
 export async function CloseSession(uuid: string): Promise<Error | 'SUCCESS'> {
-    const client = await getClient();
     const child = map.get(uuid)
     if (child == undefined)
         return new Error('invalid uuid')
@@ -210,25 +207,39 @@ export async function CloseSession(uuid: string): Promise<Error | 'SUCCESS'> {
 
 
 
-export async function ConfigureDaemon(address: string, reset: boolean): Promise<Computer> {
+export async function ConfigureDaemon(address: string): Promise<Computer> {
     let computer: Computer = {
         address
     }
 
-    console.log(`configuring daemon`)
-    const client = await getClient();
-    try {
-        await client.post(`http://${address}:${WS_PORT}/initialize`, Body.json(computer), {
-            responseType: ResponseType.JSON
-        });
-    } catch { }
+    await client.post(`http://${address}:${WS_PORT}/initialize`, Body.json(computer), {
+        responseType: ResponseType.JSON
+    });
 
+    return computer
+}
+
+export async function GetInfo(computer: Computer): Promise<any|Error> {
+    const {address} = computer
+    const {data,ok} = await client.post(`http://${address}:${WS_PORT}/info`, Body.json(computer), {
+            responseType: ResponseType.JSON
+    })
+
+    if (!ok) 
+        return new Error(`error ${JSON.stringify(data)}`)
+
+    return data
+}
+
+export async function Sessions(computer: Computer): Promise<any[]> {
+    const {address} = computer
+    return (await client.get(`http://${address}:${WS_PORT}/sessions`)).data as any[];
+}
+
+export async function ResetDaemon(address: string): Promise<void> {
     const sessions = (await client.get(`http://${address}:${WS_PORT}/sessions`)).data as {
         id: any
     }[];
-
-    if (!reset)
-        return computer
 
     console.log(`running sessions : ${sessions.map(x => x.id)}`)
     for (let index = 0; index < sessions.length; index++) {
@@ -236,8 +247,6 @@ export async function ConfigureDaemon(address: string, reset: boolean): Promise<
         console.log('/close request ' + element.id)
         await client.post(`http://${address}:${WS_PORT}/closed`, Body.json(element), { responseType: ResponseType.Text });
     }
-
-    return computer
 }
 
 
@@ -247,7 +256,6 @@ function getRandomInt(min: number, max: number) {
     const maxFloored = Math.floor(max);
     return Math.floor(Math.random() * (maxFloored - minCeiled) + minCeiled);
 }
-
 async function JoinZeroTier(network_id: string): Promise<string> {
     const command = await new Command('ZeroTier', ['leave', network_id]).execute();
     return command.stdout + '\n' + command.stderr
