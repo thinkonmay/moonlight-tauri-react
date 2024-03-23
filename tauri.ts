@@ -208,15 +208,9 @@ export async function CloseSession(uuid: string): Promise<Error | 'SUCCESS'> {
 
 
 export async function ConfigureDaemon(address: string): Promise<Computer> {
-    let computer: Computer = {
+    return {
         address
     }
-
-    await client.post(`http://${address}:${WS_PORT}/initialize`, Body.json(computer), {
-        responseType: ResponseType.JSON
-    });
-
-    return computer
 }
 
 export async function GetInfo(computer: Computer): Promise<any|Error> {
