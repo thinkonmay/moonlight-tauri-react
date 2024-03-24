@@ -1,11 +1,6 @@
 import { Body, Client, ResponseType, getClient } from '@tauri-apps/api/http';
 import { Child, Command } from "@tauri-apps/api/shell";
 
-// TODO /log & /info
-// TODO log moonlight
-// TODO api call status
-// TODO loading
-
 
 
 let client : Client = null;
@@ -49,22 +44,12 @@ type StreamConfig = {
 
 type Computer = {
     address: string,
-
-    turn?: {
-        username: string,
-        password: string,
-        min_port: number,
-        max_port: number,
-        turn_port: number
-    }
-
-    rtc_config?: RTCConfiguration
 }
 
 export async function StartVirtdaemon(computer: Computer, target: any): Promise<any> {
     const { address } = computer
 
-    const id = getRandomInt(0, 100)
+    const id = crypto.randomUUID()
     const req = {
         id,
         target,
@@ -75,20 +60,23 @@ export async function StartVirtdaemon(computer: Computer, target: any): Promise<
         }
     }
 
-    const resp = await client.post<{
-        vm: {
-            result: any
-        }
-    }>(`http://${address}:${WS_PORT}/new`, Body.json(req), {
-        responseType: ResponseType.JSON
+    const resp = await client.post(`http://${address}:${WS_PORT}/new`, Body.json(req), {
+        responseType: ResponseType.Text
     });
 
-    console.log(resp.data.vm.result)
+    if (!resp.ok) 
+        throw new Error(resp.data as string)
 
-    return resp.data.vm.result
+    const result = JSON.parse(resp.data as string)
+    return result.vm.result
 };
 
-export async function StartThinkmay(computer: Computer, target: any): Promise<string> {
+export type Session = {
+    audioUrl : string
+    videoUrl : string
+    rtc_config: RTCConfiguration
+}
+export async function StartThinkmay(computer: Computer): Promise<Session> {
     const { address } = computer
 
     const turn = {
@@ -99,20 +87,11 @@ export async function StartThinkmay(computer: Computer, target: any): Promise<st
         password: crypto.randomUUID(),
     }
 
-    const webrtc_config = {
-        iceServers: [
-            {
-                urls: `stun:${address}:${turn.port}`
-            }, {
-                urls: `turn:${address}:${turn.port}`,
-                username: turn.username,
-                credential: turn.password,
-            }
-        ]
-    }
-
     const thinkmay = {
-        webrtcConfig: JSON.stringify(webrtc_config)
+        stunAddress: `stun:${address}:${turn.port}`,
+        turnAddress: `turn:${address}:${turn.port}`,
+        username: turn.username,
+        credential: turn.password,
     }
 
     const display = {
@@ -120,10 +99,9 @@ export async function StartThinkmay(computer: Computer, target: any): Promise<st
         ScreenHeight: 1080,
     }
 
-    const id = getRandomInt(0, 100)
+    const id = crypto.randomUUID()
     const req = {
         id,
-        target,
         thinkmay,
         turn,
         display
@@ -133,18 +111,24 @@ export async function StartThinkmay(computer: Computer, target: any): Promise<st
         responseType: ResponseType.JSON
     });
 
-
-
     if (!resp.ok)
         throw new Error(resp.data as string)
-    else
-        console.log('/new request return ' + resp.data)
 
-    const ret = crypto.randomUUID()
-    computer.rtc_config = webrtc_config
-    map.set(ret, { req: { ...req, computer } })
-
-    return ret;
+    return {
+        audioUrl: `http://${address}:${WS_PORT}/handshake/client?token=${(resp.data as any).thinkmay.audioToken}`,
+        videoUrl: `http://${address}:${WS_PORT}/handshake/client?token=${(resp.data as any).thinkmay.videoToken}`,
+        rtc_config: {
+            iceServers: [
+                {
+                    urls: `stun:${address}:${turn.port}`
+                }, {
+                    urls: `turn:${address}:${turn.port}`,
+                    username: turn.username,
+                    credential: turn.password,
+                }
+            ]
+        }
+    }
 };
 
 
@@ -173,7 +157,7 @@ export async function StartMoonlight(computer: Computer, options? : StreamConfig
     }
 
     const resp = await client.post(`http://${address}:${WS_PORT}/new`, Body.json(req), {
-        responseType: ResponseType.JSON
+        responseType: ResponseType.JSON,
     });
 
 
@@ -243,7 +227,8 @@ export async function ConfigureDaemon(address: string): Promise<Computer> {
 export async function GetInfo(computer: Computer): Promise<any|Error> {
     const {address} = computer
     const {data,ok} = await client.post(`http://${address}:${WS_PORT}/info`, Body.json(computer), {
-            responseType: ResponseType.JSON
+        timeout: 1000,
+        responseType: ResponseType.JSON
     })
 
     if (!ok) 
@@ -252,21 +237,21 @@ export async function GetInfo(computer: Computer): Promise<any|Error> {
     return data
 }
 
-export async function Sessions(computer: Computer): Promise<any[]> {
-    const {address} = computer
-    return (await client.get(`http://${address}:${WS_PORT}/sessions`)).data as any[];
-}
-
 export async function ResetDaemon(address: string): Promise<void> {
-    const sessions = (await client.get(`http://${address}:${WS_PORT}/sessions`)).data as {
-        id: any
-    }[];
+    const info = (await client.get(`http://${address}:${WS_PORT}/info`)).data as { 
+        Sessions: {
+            id: string
+        }[]
+    };
 
+
+    console.log(info)
+    const sessions = info.Sessions
     console.log(`running sessions : ${sessions.map(x => x.id)}`)
     for (let index = 0; index < sessions.length; index++) {
-        const element = sessions[index];
-        console.log('/close request ' + element.id)
-        await client.post(`http://${address}:${WS_PORT}/closed`, Body.json(element), { responseType: ResponseType.Text });
+        await client.post(`http://${address}:${WS_PORT}/closed`, Body.json(sessions[index]), { 
+            responseType: ResponseType.Text 
+        });
     }
 }
 
