@@ -61,6 +61,33 @@ type Computer = {
     rtc_config?: RTCConfiguration
 }
 
+export async function StartVirtdaemon(computer: Computer, target: any): Promise<any> {
+    const { address } = computer
+
+    const id = getRandomInt(0, 100)
+    const req = {
+        id,
+        target,
+        vm: {
+            GPU: 'GA104 [GeForce RTX 3060 Ti Lite Hash Rate]',
+            CPU : "8",
+            RAM : "8"
+        }
+    }
+
+    const resp = await client.post<{
+        vm: {
+            result: any
+        }
+    }>(`http://${address}:${WS_PORT}/new`, Body.json(req), {
+        responseType: ResponseType.JSON
+    });
+
+    console.log(resp.data.vm.result)
+
+    return resp.data.vm.result
+};
+
 export async function StartThinkmay(computer: Computer, target: any): Promise<string> {
     const { address } = computer
 
@@ -103,7 +130,7 @@ export async function StartThinkmay(computer: Computer, target: any): Promise<st
     }
 
     const resp = await client.post(`http://${address}:${WS_PORT}/new`, Body.json(req), {
-        responseType: ResponseType.Text
+        responseType: ResponseType.JSON
     });
 
 
@@ -146,7 +173,7 @@ export async function StartMoonlight(computer: Computer, options? : StreamConfig
     }
 
     const resp = await client.post(`http://${address}:${WS_PORT}/new`, Body.json(req), {
-        responseType: ResponseType.Text
+        responseType: ResponseType.JSON
     });
 
 
