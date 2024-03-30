@@ -1,7 +1,7 @@
 import { Body, Client, ResponseType, getClient } from '@tauri-apps/api/http';
 import { Child, Command } from '@tauri-apps/api/shell';
 
-export const WS_PORT = 50001;
+export const WS_PORT = 60000;
 let client: Client = null;
 getClient().then((x) => (client = x));
 async function internalFetch<T>(
