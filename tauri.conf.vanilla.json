@@ -6,7 +6,7 @@
     "distDir": "../dist"
   },
   "package": {
-    "productName": "thinkmay",
+    "productName": "moonlight",
     "version": "0.1.0"
   },
   "tauri": {
@@ -48,7 +48,7 @@
       "icon": [
         "icons/icon.ico"
       ],
-      "identifier": "thinkmay.net",
+      "identifier": "moonlight.net",
       "longDescription": "",
       "macOS": {
         "entitlements": null,
@@ -77,7 +77,7 @@
         "fullscreen": false,
         "height": 600,
         "resizable": true,
-        "title": "thinkmay",
+        "title": "moonlight",
         "width": 800
       }
     ]
