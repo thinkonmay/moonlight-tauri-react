@@ -1,7 +1,7 @@
 import { Body, Client, ResponseType, getClient } from '@tauri-apps/api/http';
 import { Child, Command } from '@tauri-apps/api/shell';
 
-export const WS_PORT = 60000;
+export const WS_PORT = 50001;
 let client: Client = null;
 getClient().then((x) => (client = x));
 async function internalFetch<T>(
@@ -324,11 +324,16 @@ type MoonlightStreamConfig = {
     width?: number;
     height?: number;
 };
+type MoonlightStream = {
+    process: Child
+    request: StartRequest
+    computer: Computer
+}
 export async function StartMoonlight(
     computer: Computer,
     options?: MoonlightStreamConfig,
     callback?: (type: 'stdout' | 'stderr', log: string) => void
-): Promise<Child> {
+): Promise<MoonlightStream> {
     const { address } = computer;
 
     const PORT = getRandomInt(60000, 65530);
@@ -338,17 +343,12 @@ export async function StartMoonlight(
         port: PORT.toString()
     };
 
-    const display = {
-        ScreenWidth: 1920,
-        ScreenHeight: 1080
-    };
 
-    const id = getRandomInt(0, 100);
+    const id = crypto.randomUUID();
     const req = {
         id,
         timestamp: new Date().toISOString(),
-        sunshine,
-        display
+        sunshine
     };
 
     const resp = await internalFetch<StartRequest>(address, 'new', req);
@@ -381,7 +381,17 @@ export async function StartMoonlight(
         callback != undefined ? callback('stdout', data) : console.log(data)
     );
 
-    return await command.spawn();
+    return {
+        process: await command.spawn(),
+        request: resp,
+        computer
+    }
+}
+
+export async function CloseMoonlight(stream: MoonlightStream): Promise<Error | 'SUCCESS'> {
+    stream.process.kill()
+    const resp = await internalFetch(stream.computer.address, 'closed', stream.request);
+    return resp instanceof Error ? resp : 'SUCCESS';
 }
 
 export async function CloseSession(
