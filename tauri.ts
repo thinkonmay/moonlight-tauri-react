@@ -1,192 +1,360 @@
-import { Body, ResponseType, getClient } from '@tauri-apps/api/http';
-import { Child, Command } from "@tauri-apps/api/shell";
+import { Body, Client, ResponseType, getClient } from '@tauri-apps/api/http';
+import { Child, Command } from '@tauri-apps/api/shell';
 
-// TODO /log & /info
-// TODO log moonlight
-// TODO api call status
-// TODO loading
-
-
-
-export const WS_PORT = 60000
-
-const map = new Map<string, {
-    child?: Child,
-    req: StartRequest
-}>()
-
-const LoggingQueue = [] as {type: string, message: string}[]
-
-
-export function Logging(event: {type: string, message: string}){
-    console.log(event)
-    LoggingQueue.push(event)
-} 
-
-export function GetLoggingMoonlight(): {type: string, message: string}[]{
-    // return all value in Logging and clear it
-    const ret = LoggingQueue.slice()
-    LoggingQueue.length = 0
-    return ret
-}
-
-export async function GetServerLog(address: string): Promise<{log: string, level: string, source: string, timestamp: string}[]>{ 
-    const client = await getClient();
-    const resp = (await client.get(`http://${address}:${WS_PORT}/log`)).data as {log: string, level: string, source: string, timestamp: string}[]
-
-    return resp;
-}
-
-export function GetRequest(uuid: string): undefined | StartRequest {
-    return map.get(uuid)?.req
-}
-
-
-type StartRequest = {
-    sunshine?: {
-        username: string,
-        password: string,
-        port: string
-    }
-    thinkmay?: {
-        webrtcConfig: string
-        authConfig: string
-    }
-    display?: {
-        ScreenWidth: number,
-        ScreenHeight: number,
-    }
-
-    timestamp: string
-    computer: Computer
-    id: number,
-}
-
-type StreamConfig = {
-    bitrate?: number
-    width?: number
-    height?: number
-}
-
-type Computer = {
+export const WS_PORT = 60000;
+let client: Client = null;
+getClient().then((x) => (client = x));
+async function internalFetch<T>(
     address: string,
+    command: string,
+    body?: any
+): Promise<T | Error> {
+    if (client != null) {
+        if (command == 'info') {
+            const { data, ok } = await client.get<T>(
+                `http://${address}:${WS_PORT}/info`,
+                {
+                    timeout: { secs: 3, nanos: 0 },
+                    responseType: ResponseType.JSON
+                }
+            );
+
+            if (!ok) return new Error('fail to request');
+
+            return data;
+        } else {
+            const { data, ok } = await client.post<T>(
+                `http://${address}:${WS_PORT}/${command}`,
+                Body.json(body),
+                {
+                    responseType: ResponseType.JSON
+                }
+            );
+
+            if (!ok) return new Error('fail to request');
+
+            return data;
+        }
+    } else {
+        if (command == 'info') {
+            const resp = await fetch(`https://${address}/info`);
+
+            if (!resp.ok) return new Error('fail to request');
+
+            return await resp.json();
+        } else {
+            const resp = await fetch(`https://${address}/${command}`, {
+                method: 'POST',
+                body: JSON.stringify(body)
+            });
+
+            if (!resp.ok) return new Error('fail to request');
+
+            return await resp.json();
+        }
+    }
+}
+
+export type Computer = {
+    address?: string; // private
+
+    Hostname?: string;
+    CPU?: string;
+    RAM?: string;
+    BIOS?: string;
+    PublicIP?: string;
+    PrivateIP?: string;
+    MacAddr?: string;
+
+    GPUs: string[];
+    Sessions?: StartRequest[];
+    Volumes?: string[];
+};
+
+export async function GetInfo(ip: string): Promise<Computer | Error> {
+    return await internalFetch<Computer>(ip, 'info');
+}
+
+export type StartRequest = {
+    id: string;
+    target?: string;
 
     turn?: {
-        username: string,
-        password: string,
-        min_port: number,
-        max_port: number,
-        turn_port: number
-    }
+        minPort: number;
+        maxPort: number;
+        port: number;
+        username: string;
+        password: string;
+    };
+    sunshine?: {
+        username: string;
+        password: string;
+        port: string;
+    };
+    thinkmay?: {
+        stunAddress: string;
+        turnAddress: string;
+        username: string;
+        password: string;
+        audioToken?: string;
+        videoToken?: string;
+    };
+    display?: {
+        ScreenWidth: number;
+        ScreenHeight: number;
+    };
+    vm?: Computer;
+};
 
-    rtc_config?: RTCConfiguration
+export async function StartVirtdaemon(
+    computer: Computer,
+    volume_id?: string
+): Promise<any> {
+    const { address } = computer;
+
+    const id = crypto.randomUUID();
+    const req: StartRequest = {
+        id,
+        vm: {
+            GPUs: ['GA104 [GeForce RTX 3060 Ti Lite Hash Rate]'],
+            Volumes: volume_id != undefined ? [volume_id] : [],
+            CPU: '16',
+            RAM: '16'
+        }
+    };
+
+    const resp = await internalFetch(address, 'new', req);
+    if (resp instanceof Error) return resp;
+
+    return;
 }
 
-export async function StartThinkmay(computer: Computer): Promise<string> {
-    const client = await getClient();
-    const { address } = computer
+export type Session = {
+    audioUrl: string;
+    videoUrl: string;
+    rtc_config: RTCConfiguration;
+};
+
+export async function StartThinkmayOnVM(
+    computer: Computer,
+    target: string
+): Promise<Session> {
+    const { address } = computer;
 
     const turn = {
         minPort: WS_PORT,
         maxPort: 65535,
         port: getRandomInt(WS_PORT, 65535),
         username: crypto.randomUUID(),
-        password: crypto.randomUUID(),
-    }
-
-    const webrtc_config = {
-        iceServers: [
-            {
-                urls: `stun:${address}:${turn.port}`
-            }, {
-                urls: `turn:${address}:${turn.port}`,
-                username: turn.username,
-                credential: turn.password,
-            }
-        ]
-    }
+        password: crypto.randomUUID()
+    };
 
     const thinkmay = {
-        authConfig: '',
-        webrtcConfig: JSON.stringify(webrtc_config)
-    }
+        stunAddress: `stun:${address}:${turn.port}`,
+        turnAddress: `turn:${address}:${turn.port}`,
+        username: turn.username,
+        password: turn.password
+    };
 
     const display = {
         ScreenWidth: 1920,
-        ScreenHeight: 1080,
-    }
+        ScreenHeight: 1080
+    };
 
-    const id = getRandomInt(0, 100)
-    const req = {
+    const id = crypto.randomUUID();
+    const req: StartRequest = {
         id,
-        timestamp: new Date().toISOString(),
+        target,
         thinkmay,
         turn,
         display
-    }
+    };
 
-    const resp = await client.post(`http://${address}:${WS_PORT}/new`, Body.json(req), {
-        responseType: ResponseType.Text
-    });
+    const resp = await internalFetch<StartRequest>(address, 'new', req);
+    if (resp instanceof Error) throw resp;
 
+    return {
+        audioUrl:
+            client == null
+                ? `https://${address}/handshake/client?token=${resp.thinkmay.audioToken}&target=${target}`
+                : `http://${address}:${WS_PORT}/handshake/client?token=${resp.thinkmay.audioToken}&target=${target}`,
+        videoUrl:
+            client == null
+                ? `https://${address}/handshake/client?token=${resp.thinkmay.videoToken}&target=${target}`
+                : `http://${address}:${WS_PORT}/handshake/client?token=${resp.thinkmay.videoToken}&target=${target}`,
+        rtc_config: {
+            iceTransportPolicy: 'relay',
+            iceServers: [
+                {
+                    urls: `stun:${address}:${turn.port}`
+                },
+                {
+                    urls: `turn:${address}:${turn.port}`,
+                    username: turn.username,
+                    credential: turn.password
+                }
+            ]
+        }
+    };
+}
+export async function StartThinkmay(computer: Computer): Promise<Session> {
+    const { address } = computer;
 
+    const turn = {
+        minPort: WS_PORT,
+        maxPort: 65535,
+        port: getRandomInt(WS_PORT, 65535),
+        username: crypto.randomUUID(),
+        password: crypto.randomUUID()
+    };
 
-    if (!resp.ok)
-        throw new Error(resp.data as string)
-    else
-        console.log('/new request return ' + resp.data)
+    const thinkmay = {
+        stunAddress: `stun:${address}:${turn.port}`,
+        turnAddress: `turn:${address}:${turn.port}`,
+        username: turn.username,
+        password: turn.password
+    };
 
-    const ret = crypto.randomUUID()
-    computer.rtc_config = webrtc_config
-    map.set(ret, { req: { ...req, computer } })
+    const display = {
+        ScreenWidth: 1920,
+        ScreenHeight: 1080
+    };
 
-    return ret;
+    const id = crypto.randomUUID();
+    const req: StartRequest = {
+        id,
+        thinkmay,
+        turn,
+        display
+    };
+
+    const resp = await internalFetch<StartRequest>(address, 'new', req);
+    if (resp instanceof Error) throw resp;
+
+    return {
+        audioUrl:
+            client == null
+                ? `https://${address}/handshake/client?token=${resp.thinkmay.audioToken}`
+                : `http://${address}:${WS_PORT}/handshake/client?token=${resp.thinkmay.audioToken}`,
+        videoUrl:
+            client == null
+                ? `https://${address}/handshake/client?token=${resp.thinkmay.videoToken}`
+                : `http://${address}:${WS_PORT}/handshake/client?token=${resp.thinkmay.videoToken}`,
+        rtc_config: {
+            iceTransportPolicy: 'all',
+            iceServers: [
+                {
+                    urls: `stun:${address}:${turn.port}`
+                },
+                {
+                    urls: `turn:${address}:${turn.port}`,
+                    username: turn.username,
+                    credential: turn.password
+                }
+            ]
+        }
+    };
+}
+export function ParseRequest(
+    computer: Computer,
+    session: StartRequest
+): Session {
+    const { address } = computer;
+    const { turn, thinkmay } = session;
+
+    return {
+        audioUrl:
+            client == null
+                ? `https://${address}/handshake/client?token=${thinkmay.audioToken}`
+                : `http://${address}:${WS_PORT}/handshake/client?token=${thinkmay.audioToken}`,
+        videoUrl:
+            client == null
+                ? `https://${address}/handshake/client?token=${thinkmay.videoToken}`
+                : `http://${address}:${WS_PORT}/handshake/client?token=${thinkmay.videoToken}`,
+        rtc_config: {
+            iceTransportPolicy: 'all',
+            iceServers: [
+                {
+                    urls: `stun:${address}:${turn.port}`
+                },
+                {
+                    urls: `turn:${address}:${turn.port}`,
+                    username: turn.username,
+                    credential: turn.password
+                }
+            ]
+        }
+    };
+}
+
+export function ParseVMRequest(
+    computer: Computer,
+    session: StartRequest
+): Session {
+    const { address } = computer;
+    const { turn, thinkmay, target } = session;
+
+    return {
+        audioUrl:
+            client == null
+                ? `https://${address}/handshake/client?token=${thinkmay.audioToken}&target=${target}`
+                : `http://${address}:${WS_PORT}/handshake/client?token=${thinkmay.audioToken}&target=${target}`,
+        videoUrl:
+            client == null
+                ? `https://${address}/handshake/client?token=${thinkmay.videoToken}&target=${target}`
+                : `http://${address}:${WS_PORT}/handshake/client?token=${thinkmay.videoToken}&target=${target}`,
+        rtc_config: {
+            iceTransportPolicy: 'relay', // preferred as VM often under double NAT
+            iceServers: [
+                {
+                    urls: `stun:${address}:${turn.port}`
+                },
+                {
+                    urls: `turn:${address}:${turn.port}`,
+                    username: turn.username,
+                    credential: turn.password
+                }
+            ]
+        }
+    };
+}
+
+type MoonlightStreamConfig = {
+    bitrate?: number;
+    width?: number;
+    height?: number;
 };
+export async function StartMoonlight(
+    computer: Computer,
+    options?: MoonlightStreamConfig,
+    callback?: (type: 'stdout' | 'stderr', log: string) => void
+): Promise<Child> {
+    const { address } = computer;
 
-
-
-export async function StartMoonlight(computer: Computer, options? : StreamConfig, callback?: (type: "stdout" | "stderr", log: string) => void ): Promise<string> {
-    const { address } = computer
-    const client = await getClient();
-
-    const PORT = getRandomInt(60000,65530)
+    const PORT = getRandomInt(60000, 65530);
     const sunshine = {
         username: getRandomInt(0, 9999).toString(),
         password: getRandomInt(0, 9999).toString(),
         port: PORT.toString()
-    }
+    };
 
     const display = {
         ScreenWidth: 1920,
-        ScreenHeight: 1080,
-    }
+        ScreenHeight: 1080
+    };
 
-    const id = getRandomInt(0, 100)
+    const id = getRandomInt(0, 100);
     const req = {
         id,
         timestamp: new Date().toISOString(),
         sunshine,
-        display 
-    }
+        display
+    };
 
-    Logging({type: 'info', message: `Starting moonlight with ${JSON.stringify(req)}`});
-    Logging({type: 'info', message: `POST http://${computer}:${WS_PORT}/new Body ${JSON.stringify(req)}`})
-    const resp = await client.post(`http://${address}:${WS_PORT}/new`, Body.json(req), {
-        responseType: ResponseType.Text
-    });
+    const resp = await internalFetch<StartRequest>(address, 'new', req);
+    if (resp instanceof Error) throw resp;
 
-
-
-    if (!resp.ok){
-        Logging({type: 'info', message: 'Error /new request return ' + resp.data});
-        throw new Error(resp.data as string)
-    }
-    else{
-        Logging({type: 'info', message: 'Response /new request return ' + resp.data});
-    }
-
-
-    const { username, password } = sunshine
+    const { username, password } = sunshine;
     const cmds = [
         '--address',
         address,
@@ -202,98 +370,48 @@ export async function StartMoonlight(computer: Computer, options? : StreamConfig
         username,
         '--password',
         password
-    ]
-    Logging({type: 'info', message: `starting moonlight with ${cmds}`});
+    ];
+    console.log(`starting moonlight with ${cmds}`);
     const command = new Command('Moonlight', cmds);
 
-    command.stderr.addListener('data', (data) => callback != undefined ? callback('stderr',data) : console.log(data));
-    command.stdout.addListener('data', (data) => callback != undefined ? callback('stdout',data) : console.log(data));
-    const child = await command.spawn()
+    command.stderr.addListener('data', (data) =>
+        callback != undefined ? callback('stderr', data) : console.log(data)
+    );
+    command.stdout.addListener('data', (data) =>
+        callback != undefined ? callback('stdout', data) : console.log(data)
+    );
 
-    const ret = crypto.randomUUID()
-    map.set(ret, { child, req: { ...req, computer } })
-
-    return ret;
-};
-
-
-
-export async function CloseSession(uuid: string): Promise<Error | 'SUCCESS'> {
-    const client = await getClient();
-    const child = map.get(uuid)
-    if (child == undefined)
-        return new Error('invalid uuid')
-
-    await child.child?.kill()
-    
-    Logging({type: 'info', message: `killing child ${child.req.id}`});
-
-    Logging({type: 'info', message: `POST http://${child.req.computer.address}:${WS_PORT}/closed Body ${child.req.id}`});
-    await client.post(`http://${child.req.computer.address}:${WS_PORT}/closed`, Body.json({
-        id: child.req.id
-    }), { responseType: ResponseType.Text });
-
-    return 'SUCCESS'
+    return await command.spawn();
 }
 
-
-
-
-export async function ConfigureDaemon(address: string, reset: boolean): Promise<Computer> {
-    let computer: Computer = {
-        address
-    }
-
-    Logging({type: 'info', message: `POST http://${address}:${WS_PORT}/initialize Body ${JSON.stringify(computer)}`})
-    const client = await getClient();
-    try {
-        await client.post(`http://${address}:${WS_PORT}/initialize`, Body.json(computer), {
-            responseType: ResponseType.JSON
-        });
-    } catch { 
-        Logging({type: 'info', message: `error sending /initialize request to ${JSON.stringify(computer)}`})
-    }
-
-    Logging({type: 'info', message: `GET http://${address}:${WS_PORT}/sessions`})
-    const sessions = (await client.get(`http://${address}:${WS_PORT}/sessions`)).data as {
-        id: any
-    }[];
-
-    if(sessions.length == 0){
-        Logging({type: 'info', message: `no running sessions on ${address}`})
-    }
-
-    if (!reset)
-        return computer
-
-    Logging({type: 'info', message: `running sessions : ${sessions.map(x => x.id)}`})
-    for (let index = 0; index < sessions.length; index++) {
-        const element = sessions[index];
-        Logging({type: 'info', message: `POST http://${address}:${WS_PORT}/closed Body ${JSON.stringify(element)}`})
-        await client.post(`http://${address}:${WS_PORT}/closed`, Body.json(element), { responseType: ResponseType.Text });
-    }
-
-    Logging({type: 'info', message: `return ${JSON.stringify(computer)}`})
-    return computer
+export async function CloseSession(
+    computer: Computer,
+    req: StartRequest
+): Promise<Error | 'SUCCESS'> {
+    const resp = await internalFetch(computer.address, 'closed', req);
+    return resp instanceof Error ? resp : 'SUCCESS';
 }
-
-
 
 function getRandomInt(min: number, max: number) {
     const minCeiled = Math.ceil(min);
     const maxFloored = Math.floor(max);
     return Math.floor(Math.random() * (maxFloored - minCeiled) + minCeiled);
 }
-
 async function JoinZeroTier(network_id: string): Promise<string> {
-    const command = await new Command('ZeroTier', ['leave', network_id]).execute();
-    return command.stdout + '\n' + command.stderr
+    const command = await new Command('ZeroTier', [
+        'leave',
+        network_id
+    ]).execute();
+    return command.stdout + '\n' + command.stderr;
 }
 async function LeaveZeroTier(network_id: string): Promise<string> {
-    const command = await new Command('ZeroTier', ['join', network_id]).execute();
-    return command.stdout + '\n' + command.stderr
+    const command = await new Command('ZeroTier', [
+        'join',
+        network_id
+    ]).execute();
+    return command.stdout + '\n' + command.stderr;
 }
 async function DiscordRichPresence(app_id: string): Promise<string> {
     const command = await new Command('Daemon', ['discord', app_id]).execute();
-    return command.stdout + '\n' + command.stderr
+    return command.stdout + '\n' + command.stderr;
 }
