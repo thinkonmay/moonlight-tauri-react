@@ -8,7 +8,7 @@
   },
   "package": {
     "productName": "Thinkmay",
-    "version": "0.1.12"
+    "version": "0.1.13"
   },
   "tauri": {
     "allowlist": {
@@ -16,7 +16,10 @@
       "http": {
         "all": true,
         "request": true,
-        "scope": ["http://**","https://**"]
+        "scope": [
+          "http://**",
+          "https://**"
+        ]
       },
       "shell": {
         "scope": [
