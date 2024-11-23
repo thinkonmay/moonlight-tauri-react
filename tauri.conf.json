@@ -31,7 +31,7 @@
           },
           {
             "name": "ZeroTier",
-            "cmd": "zerotier-cli",
+            "cmd": "zerotier.exe",
             "args": true
           }
         ]
