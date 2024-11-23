@@ -57,7 +57,7 @@ async function internalFetch<T>(
 
 export type Computer = {
     address: string; // private
-    zerotierid: string;
+    zerotierid?: string;
 };
 
 
@@ -78,9 +78,10 @@ type MoonlightStreamConfig = {
 };
 type MoonlightStream = {
     process: Child
-    zerotierid?: string;
     request: StartRequest
     computer: Computer
+
+    zerotierid?: string;
 }
 export async function StartMoonlight(
     computer: Computer,
@@ -88,11 +89,14 @@ export async function StartMoonlight(
     callback?: (type: 'stdout' | 'stderr', log: string) => void
 ): Promise<MoonlightStream> {
     const { address,zerotierid } = computer;
-    const res = await JoinZeroTier(zerotierid)
-    if(!res.includes('200'))
-        throw new Error(`failed to join zerotier ${res}`)
-    else
-        await new Promise(r => setTimeout(r,10000))
+
+    if (zerotierid != undefined) {
+        const res = await JoinZeroTier(zerotierid)
+        if(!res.includes('200'))
+            throw new Error(`failed to join zerotier ${res}`)
+        else
+            await new Promise(r => setTimeout(r,10000))
+    }
 
     const PORT = getRandomInt(60000, 65530);
     const sunshine = {
@@ -148,9 +152,12 @@ export async function StartMoonlight(
 export async function CloseMoonlight(stream: MoonlightStream): Promise<Error | 'SUCCESS'> {
     stream.process.kill()
     const resp = await internalFetch(stream.computer.address, 'closed', stream.request);
-    const result = await LeaveZeroTier(stream.zerotierid)
-    if(!result.includes('200'))
-        throw new Error(`failed to join zerotier ${result}`)
+    if (stream.zerotierid != undefined) {
+        const result = await LeaveZeroTier(stream.zerotierid)
+        if(!result.includes('200'))
+            throw new Error(`failed to join zerotier ${result}`)
+    }
+
     return resp instanceof Error ? resp : 'SUCCESS';
 }
 
