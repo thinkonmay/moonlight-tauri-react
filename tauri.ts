@@ -88,8 +88,11 @@ export async function StartMoonlight(
     callback?: (type: 'stdout' | 'stderr', log: string) => void
 ): Promise<MoonlightStream> {
     const { address,zerotierid } = computer;
-    const result = await JoinZeroTier(zerotierid)
-    console.log(result)
+    const res = await JoinZeroTier(zerotierid)
+    if(!res.includes('200'))
+        throw new Error(`failed to join zerotier ${res}`)
+    else
+        await new Promise(r => setTimeout(r,10000))
 
     const PORT = getRandomInt(60000, 65530);
     const sunshine = {
@@ -146,9 +149,10 @@ export async function StartMoonlight(
 
 export async function CloseMoonlight(stream: MoonlightStream): Promise<Error | 'SUCCESS'> {
     stream.process.kill()
-    const result = await LeaveZeroTier(stream.zerotierid)
-    console.log(result)
     const resp = await internalFetch(stream.computer.address, 'closed', stream.request);
+    const result = await LeaveZeroTier(stream.zerotierid)
+    if(!result.includes('200'))
+        throw new Error(`failed to join zerotier ${result}`)
     return resp instanceof Error ? resp : 'SUCCESS';
 }
 
