@@ -129,9 +129,7 @@ export async function StartMoonlight(
         '--password',
         password
     ];
-    console.log(`starting moonlight with ${cmds}`);
     const command = new Command('Moonlight', cmds);
-
     command.stderr.addListener('data', (data) =>
         callback != undefined ? callback('stderr', data) : console.log(data)
     );
@@ -180,7 +178,10 @@ async function JoinZeroTier(network_id: string): Promise<string> {
     ]).execute();
     return command.stdout + '\n' + command.stderr;
 }
-async function DiscordRichPresence(app_id: string): Promise<string> {
-    const command = await new Command('Daemon', ['discord', app_id]).execute();
-    return command.stdout + '\n' + command.stderr;
+
+let discordchild = null
+export async function DiscordRichPresence(app_id: string, title : string, detail : string): Promise<string> {
+    const command = new Command('Daemon', ['discord', app_id, btoa(`${title}|${detail}`)]);
+    discordchild = await command.spawn()
+    return 'SUCCESS'
 }
