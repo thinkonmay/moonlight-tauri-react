@@ -17,6 +17,10 @@
         "request": true,
         "scope": ["http://**","https://**"]
       },
+      "fs": {
+        "scope": ["C:/ProgramData/ZeroTier/One/authtoken.secret"]
+      },
+
       "shell": {
         "scope": [
           {

@@ -1,5 +1,6 @@
 import { Body, Client, ResponseType, getClient } from '@tauri-apps/api/http';
 import { Child, Command } from '@tauri-apps/api/shell';
+import { readTextFile } from '@tauri-apps/api/fs';
 
 export const WS_PORT = 60000;
 let client: Client = null;
@@ -168,18 +169,20 @@ function getRandomInt(min: number, max: number) {
     return Math.floor(Math.random() * (maxFloored - minCeiled) + minCeiled);
 }
 async function LeaveZeroTier(network_id: string): Promise<string> {
+    const file = await readTextFile('C:/ProgramData/ZeroTier/One/authtoken.secret')
     const command = await new Command('ZeroTier', [
         '-q',
-        '-TIO2MV3Dxac8xpQVS5b14tw3gjA7SciCg',
+        `-T${file}`,
         'leave',
         network_id
     ]).execute();
     return command.stdout + '\n' + command.stderr;
 }
 async function JoinZeroTier(network_id: string): Promise<string> {
+    const file = await readTextFile('C:/ProgramData/ZeroTier/One/authtoken.secret')
     const command = await new Command('ZeroTier', [
         '-q',
-        '-TIO2MV3Dxac8xpQVS5b14tw3gjA7SciCg',
+        `-T${file}`,
         'join',
         network_id
     ]).execute();
